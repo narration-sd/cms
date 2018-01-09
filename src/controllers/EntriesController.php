@@ -13,6 +13,7 @@ use craft\base\Field;
 use craft\elements\Entry;
 use craft\elements\User;
 use craft\errors\InvalidElementException;
+use craft\events\ElementEvent;
 use craft\events\ShowEntryTemplateChoiceEvent;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\Json;
@@ -44,6 +45,14 @@ use yii\web\ServerErrorHttpException;
  */
 class EntriesController extends BaseEntriesController
 {
+    // Constants
+    // =========================================================================
+
+    /**
+     * @event ElementEvent The event that is triggered when an entry’s template is rendered for Live Preview.
+     */
+    const EVENT_PREVIEW_ENTRY = 'previewEntry';
+
     // Constants
     // =========================================================================
 
@@ -433,6 +442,13 @@ class EntriesController extends BaseEntriesController
             Craft::$app->language = Craft::$app->getTargetLanguage(true);
 
             $this->_populateEntryModel($entry);
+        }
+
+        // Fire a 'previewEntry' event
+        if ($this->hasEventHandlers(self::EVENT_PREVIEW_ENTRY)) {
+            $this->trigger(self::EVENT_PREVIEW_ENTRY, new ElementEvent([
+                'element' => $entry,
+            ]));
         }
 
         return $this->_showEntry($entry);
@@ -991,6 +1007,7 @@ class EntriesController extends BaseEntriesController
         Craft::$app->getElements()->setPlaceholderElement($entry);
 
         $this->getView()->getTwig()->disableStrictVariables();
+
 
         // allow a plugin to choose what template actually to use for the edit
         $eventName = self::EVENT_SHOW_ENTRY_TEMPLATE_CHOICE;
