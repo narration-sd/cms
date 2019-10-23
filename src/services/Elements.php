@@ -47,6 +47,7 @@ use craft\queue\jobs\UpdateSearchIndex;
 use craft\records\Element as ElementRecord;
 use craft\records\Element_SiteSettings as Element_SiteSettingsRecord;
 use craft\records\StructureElement as StructureElementRecord;
+use craft\validators\SlugValidator;
 use yii\base\Behavior;
 use yii\base\Component;
 use yii\base\Exception;
@@ -58,7 +59,7 @@ use yii\db\Exception as DbException;
  * An instance of the Elements service is globally accessible in Craft via [[\craft\base\ApplicationTrait::getElements()|`Craft::$app->elements`]].
  *
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
- * @since 3.0
+ * @since 3.0.0
  */
 class Elements extends Component
 {
@@ -104,21 +105,57 @@ class Elements extends Component
 
     /**
      * @event ElementEvent The event that is triggered before an element is restored.
+     * @since 3.1.0
      */
     const EVENT_BEFORE_RESTORE_ELEMENT = 'beforeRestoreElement';
 
     /**
      * @event ElementEvent The event that is triggered after an element is restored.
+     * @since 3.1.0
      */
     const EVENT_AFTER_RESTORE_ELEMENT = 'afterRestoreElement';
 
     /**
      * @event ElementEvent The event that is triggered before an element is saved.
+     *
+     * If you want to ignore events for drafts or revisions, call [[\craft\helpers\ElementHelper::isDraftOrRevision()]]
+     * from your event handler:
+     *
+     * ```php
+     * use craft\events\ElementEvent;
+     * use craft\helpers\ElementHelper;
+     * use craft\services\Elements;
+     *
+     * Craft::$app->elements->on(Elements::EVENT_BEFORE_SAVE_ELEMENT, function(ElementEvent $e) {
+     *     if (ElementHelper::isDraftOrRevision($e->element) {
+     *         return;
+     *     }
+     *
+     *     // ...
+     * });
+     * ```
      */
     const EVENT_BEFORE_SAVE_ELEMENT = 'beforeSaveElement';
 
     /**
      * @event ElementEvent The event that is triggered after an element is saved.
+     *
+     * If you want to ignore events for drafts or revisions, call [[\craft\helpers\ElementHelper::isDraftOrRevision()]]
+     * from your event handler:
+     *
+     * ```php
+     * use craft\events\ElementEvent;
+     * use craft\helpers\ElementHelper;
+     * use craft\services\Elements;
+     *
+     * Craft::$app->elements->on(Elements::EVENT_AFTER_SAVE_ELEMENT, function(ElementEvent $e) {
+     *     if (ElementHelper::isDraftOrRevision($e->element) {
+     *         return;
+     *     }
+     *
+     *     // ...
+     * });
+     * ```
      */
     const EVENT_AFTER_SAVE_ELEMENT = 'afterSaveElement';
 
@@ -307,7 +344,7 @@ class Elements extends Component
         }
 
         if ($uri === '') {
-            $uri = '__home__';
+            $uri = Element::HOMEPAGE_URI;
         }
 
         if ($siteId === null) {
@@ -527,18 +564,24 @@ class Elements extends Component
                 }
 
                 $e = null;
+                try {
+                    // Make sure the element was queried with its content
+                    if ($element::hasContent() && $element->contentId === null) {
+                        throw new InvalidElementException($element, "Skipped resaving {$element} ({$element->id}) because it wasn’t loaded with its content.");
+                    }
 
-                // Make sure this isn't a revision
-                if ($skipRevisions) {
-                    try {
-                        $root = ElementHelper::rootElement($element);
-                    } catch (\Throwable $rootException) {
-                        $root = null;
-                        $e = new InvalidElementException($element, "Skipped resaving {$element} ({$element->id}) due to an error obtaining its root element: " . $rootException->getMessage());
+                    // Make sure this isn't a revision
+                    if ($skipRevisions) {
+                        try {
+                            $root = ElementHelper::rootElement($element);
+                        } catch (\Throwable $rootException) {
+                            throw new InvalidElementException($element, "Skipped resaving {$element} ({$element->id}) due to an error obtaining its root element: " . $rootException->getMessage());
+                        }
+                        if ($root->getIsRevision()) {
+                            throw new InvalidElementException($element, "Skipped resaving {$element} ({$element->id}) because it's a revision.");
+                        }
                     }
-                    if ($root && $root->getIsRevision()) {
-                        $e = new InvalidElementException($element, "Skipped resaving {$element} ({$element->id}) because it's a revision.");
-                    }
+                } catch (InvalidElementException $e) {
                 }
 
                 if ($e === null) {
@@ -748,6 +791,7 @@ class Elements extends Component
                         continue;
                     }
 
+                    $siteElement->getFieldValues();
                     /** @var Element $siteClone */
                     $siteClone = clone $siteElement;
                     $siteClone->duplicateOf = $siteElement;
@@ -768,15 +812,23 @@ class Elements extends Component
                     $siteClone->setAttributes($newAttributes, false);
                     $siteClone->siteId = $siteInfo['siteId'];
 
-                    // Set a unique URI on the site clone
-                    try {
-                        ElementHelper::setUniqueUri($siteClone);
-                    } catch (OperationAbortedException $e) {
-                        // Oh well, not worth bailing over
+                    if ($element::hasUris()) {
+                        // Make sure it has a valid slug
+                        (new SlugValidator())->validateAttribute($siteClone, 'slug');
+                        if ($siteClone->hasErrors('slug')) {
+                            throw new InvalidElementException($siteClone, "Element {$element->id} could not be duplicated for site {$siteInfo['siteId']}: " . $siteClone->getFirstError('slug'));
+                        }
+
+                        // Set a unique URI on the site clone
+                        try {
+                            ElementHelper::setUniqueUri($siteClone);
+                        } catch (OperationAbortedException $e) {
+                            // Oh well, not worth bailing over
+                        }
                     }
 
                     if (!$this->_saveElementInternal($siteClone, false, false)) {
-                        throw new InvalidElementException($siteClone, 'Element ' . $element->id . ' could not be duplicated for site ' . $siteInfo['siteId']);
+                        throw new InvalidElementException($siteClone, "Element {$element->id} could not be duplicated for site {$siteInfo['siteId']}: " . implode(', ', $siteClone->getFirstErrors()));
                     }
                 }
             }
@@ -966,6 +1018,7 @@ class Elements extends Component
      * @param ElementInterface $prevailingElement The element that is sticking around.
      * @return bool Whether the elements were merged successfully.
      * @throws \Throwable if reasons
+     * @since 3.1.31
      */
     public function mergeElements(ElementInterface $mergedElement, ElementInterface $prevailingElement): bool
     {
@@ -1151,20 +1204,13 @@ class Elements extends Component
         $transaction = $db->beginTransaction();
         try {
             // First delete any structure nodes with this element, so NestedSetBehavior can do its thing.
-            /** @var StructureElementRecord[] $records */
-            $records = StructureElementRecord::findAll([
-                'elementId' => $element->id
-            ]);
-
-            foreach ($records as $record) {
+            while (($record = StructureElementRecord::findOne(['elementId' => $element->id])) !== null) {
                 // If this element still has any children, move them up before the one getting deleted.
-                /** @var StructureElementRecord[] $children */
-                $children = $record->children()->all();
-
-                foreach ($children as $child) {
+                while (($child = $record->children(1)->one()) !== null) {
                     $child->insertBefore($record);
+                    // Re-fetch the record since its lft and rgt attributes just changed
+                    $record = StructureElementRecord::findOne($record->id);
                 }
-
                 // Delete this element's node
                 $record->deleteWithChildren();
             }
@@ -1215,6 +1261,7 @@ class Elements extends Component
      * @return bool Whether the element was restored successfully
      * @throws Exception if the $element doesn’t have any supported sites
      * @throws \Throwable if reasons
+     * @since 3.1.0
      */
     public function restoreElement(ElementInterface $element): bool
     {
@@ -1770,6 +1817,7 @@ class Elements extends Component
      * @param ElementInterface|null $siteElement The element loaded for the propagated site (only pass this if you
      * already had a reason to load it)
      * @throws Exception if the element couldn't be propagated
+     * @since 3.0.13
      */
     public function propagateElement(ElementInterface $element, int $siteId, ElementInterface $siteElement = null)
     {
