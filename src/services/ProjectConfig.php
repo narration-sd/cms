@@ -752,7 +752,7 @@ class ProjectConfig extends Component
                         // Prepare for storage
                         $dbValue = Json::encode($value);
                         if (!mb_check_encoding($value, 'UTF-8') || ($isMysql && StringHelper::containsMb4($dbValue))) {
-                            $value = 'base64:' . base64_encode($dbValue);
+                            $dbValue = 'base64:' . base64_encode($dbValue);
                         }
                         $batch[] = [$key, $dbValue];
                         $pathsToInsert[] = $key;
@@ -1716,7 +1716,7 @@ class ProjectConfig extends Component
                 if (strpos($config, '{') === 0) {
                     $data = Json::decode($config);
                 } else {
-                    $data = Json::decode($config);
+                    $data = unserialize($config, ['allowed_classes' => false]);
                 }
             }
 
