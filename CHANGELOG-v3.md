@@ -1,6 +1,98 @@
 # Release Notes for Craft CMS 3.x
 
-## 3.4.2 - 2019-01-31
+## Unreleased
+
+### Added
+- Added `craft\web\View::getInitialDeltaValue()`.
+- Added `craft\web\View::setInitialDeltaValue()`.
+
+### Changed
+- The `_includes/forms/text.html` template now supports an `inputAttributes` variable.
+
+### Fixed
+- Fixed a bug where content would not be loaded correctly for some parts of queries when using GraphQL API in some instances. ([#5548](https://github.com/craftcms/cms/issues/5548))
+- Fixed a bug where the built-in GraphQL client would not work on some environments.
+- Fixed a bug where text cells weren’t wrapping in static editable tables. ([#5611](https://github.com/craftcms/cms/issues/5611))
+- Fixed a bug where search keywords weren’t being extracted from HTML field values properly. ([#5631](https://github.com/craftcms/cms/issues/5631))
+- Fixed an error that could occur after updating to Craft 3.4. ([#5633](https://github.com/craftcms/cms/issues/5633))
+- Fixed a bug where Dropdown field values weren’t getting saved if the first option was selected. ([#5632](https://github.com/craftcms/cms/issues/5632))
+
+## 3.4.5 - 2020-02-07
+
+### Added
+- Added `craft\models\GqlToken::getIsExpired()`.
+
+### Changed
+- `craft\services\Gql::getPublicSchema()` now returns `null` if the public schema doesn’t exist yet and `allowAdminChanges` is disabled.
+- Tightened up the horizontal padding on text inputs. ([#5608](https://github.com/craftcms/cms/issues/5608))
+- Improved the look of Matrix blocks.
+- Improved the look of editable tables. ([#5615](https://github.com/craftcms/cms/issues/5615))
+- URL and Email fields now trim leading/trailing whitespace from their values before validating. ([#5614](https://github.com/craftcms/cms/issues/5614))
+- Table fields now trim leading/trailing whitespace from textual cell values before validating.
+- Improved GraphQL API performance. ([#5607](https://github.com/craftcms/cms/issues/5607))
+- Updated Garnish to 0.1.33.
+
+### Deprecated
+- Deprecated `craft\gql\base\Arguments::buildContentArguments()`.
+
+### Fixed
+- Fixed an error that occurred when working with GraphQL on an environment with `allowAdminChanges` disabled, if the public schema didn’t exist yet. ([#5588](https://github.com/craftcms/cms/issues/5588))
+- Fixed a bug where static Matrix blocks weren’t getting any top padding. ([#5609](https://github.com/craftcms/cms/issues/5609))
+- Fixed a bug where static text cells within editable tables were getting cut off. ([#5611](https://github.com/craftcms/cms/issues/5611))
+- Fixed an error that occurred when saving an element with an Assets field set to restrict files to a single folder, if any of the selected assets’ files didn’t exist.
+- Fixed an error that occurred when attempting to export elements. ([#5617](https://github.com/craftcms/cms/issues/5617))
+- Fixed a bug where HTTP exceptions were getting lost if triggered from a template via an `{% exit %}` tag.
+
+## 3.4.4.1 - 2020-02-06
+
+### Changed
+- Plugins can now modify the params sent with element index Ajax requests by hooking into the new `registerViewParams` event triggered by `Craft.BaseElementIndex`.
+
+### Fixed
+- Fixed an error that occurred when searching for elements from element indexes. ([#5599](https://github.com/craftcms/cms/issues/5599))
+
+## 3.4.4 - 2020-02-05
+
+### Added
+- Added the ability to limit multiple selections in admin tables.
+- Added an event to admin tables when selections are changed.
+- Added an event to admin tables to retrieve currently visible data.
+- Added `craft\controllers\ElementIndexesController::actionExport()`.
+- Added the `Craft.downloadFromUrl()` JavaScript method.
+
+### Deprecated
+- Deprecated `craft\controllers\ElementIndexesController::actionCreateExportToken()`.
+- Deprecated `craft\controllers\ExportController`.
+
+### Fixed
+- Fixed a bug where data tables weren’t getting horizontal scrollbars in Firefox. ([#5574](https://github.com/craftcms/cms/issues/5574))
+- Fixed a bug where HTML was being escaped twice in some admin tables. ([#5532](https://github.com/craftcms/cms/issues/5532))
+- Fixed a 404 error that would occur when attempting to preview a PDF file in a volume that didn’t have a base URL. ([#5581](https://github.com/craftcms/cms/issues/5581))
+- Fixed a bug where the Asset Indexes utility could leave the progress bar visible after it was done.
+- Fixed a bug where the `_count` field would sometimes not work correctly when using GraphQL. ([#4847](https://github.com/craftcms/cms/issues/4847))
+- Fixed a bug where assets that had been drag-uploaded to an Assets field would be hyperlinked. ([#5584](https://github.com/craftcms/cms/issues/5584))
+- Fixed a bug where `CustomFieldBehavior.php` was getting created with restricted permissions. ([#5570](https://github.com/craftcms/cms/issues/5570))
+- Fixed a bug where element exporting would redirect the browser window if the export request didn’t immediately return the export data. ([#5558](https://github.com/craftcms/cms/issues/5558))
+- Fixed a “Division by zero” error that occurred if an image transform didn’t specify a width or a height. ([#5590](https://github.com/craftcms/cms/issues/5590))
+- Fixed a bug where elements weren’t always retaining their positions in element indexes between pages.
+
+## 3.4.3 - 2020-02-03
+
+### Added
+- It’s now possible to preview video files. ([#5565](https://github.com/craftcms/cms/pull/5565))
+- Added the `--no-backup` option to the `migrate/all` command.
+
+### Changed
+- Craft now logs full exception reports when an exception is thrown from a queue job.
+
+### Fixed
+- Fixed a bug where the `update` command was backing up the database twice.
+- Fixed a bug where the “Duplicate” element action was available for users who didn’t have permission to create new entries in the section. ([#5566](https://github.com/craftcms/cms/issues/5566))
+- Fixed a bug where using directives in GraphQL could make the field return unexpected results. ([#5569](https://github.com/craftcms/cms/issues/5569))
+- Fixed a bug where the active queue job could be missing from the global sidebar and Queue Manager if there were 50 or more pending jobs with higher priorities. ([#5506](https://github.com/craftcms/cms/issues/5506))
+- Fixed a bug where Craft wouldn’t detect requests to non-primary sites if their base URL only contained one extra character than the primary site. ([#5575](https://github.com/craftcms/cms/issues/5575))
+
+## 3.4.2 - 2020-01-31
 
 ### Added
 - Added the ability to pass a custom failure message to the delete action on admin tables. ([#5507](https://github.com/craftcms/cms/issues/5507))

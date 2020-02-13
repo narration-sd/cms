@@ -37,6 +37,7 @@ new Craft.VueAdminTable({...options...});
 | Name                      | Type     | Default                                     | Description                                                  |
 | ------------------------- | -------- | ------------------------------------------- | ------------------------------------------------------------ |
 | actions                   | Array    | `[]`                                        | Array of action options to create action buttons in the table toolbar. |
+| allowMultipleSelections | Bool | true | When using checkboxes, determines whether or not multiple selections are allowed. When set to `false` the select all checkbox is hidden. |
 | checkboxes                | Bool     | `false`                                     | Whether to show the checkbox column or not.                  |
 | columns                   | Array    | `[]`                                        | Used to define the table columns. See column definition.     |
 | container                 | String   | `null`                                      | CSS selector for which element the table should mounted on.     |
@@ -57,6 +58,13 @@ new Craft.VueAdminTable({...options...});
 | searchPlaceholder         | String   | `Search`                                    | Search placeholder text.                                     |
 | tableData                 | Array    | `null`                                      | Array of objects used to populate the table data for data mode. |
 | tableDataEndpoint         | String   | `null`                                      | Endpoint for api mode to retrieve table data, pagination and table metadata (e.g. total count). |
+
+### Events
+
+| Name     | Data             | Scenario                                                  |
+| -------- | ---------------- | --------------------------------------------------------- |
+| onSelect | Array of IDs     | When a checkbox or select all is selected or de-selected. |
+| data     | Array of objects | On successful load or page change.                        |
 
 ## Table Data
 
@@ -108,6 +116,7 @@ Columns are provided as an array of objects in the component options. Each objec
 | titleClass (optional) | Class added to the cell in the header row                    |
 | dataClass (optional)  | Class added to the cell in the data row                      |
 | callback              | Callback function allowing the manipulation of the output of the data in the cell. See column callback. |
+| sortField (optional)  | Field name on which the sorting takes place. This is only available when using the `tableDataEndpoint`. Data is passed to the endpoint as `{field}|{direction}` e.g. `email|asc` |
 
 ### Special Columns
 

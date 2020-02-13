@@ -9,17 +9,15 @@ namespace craft\assetpreviews;
 
 use Craft;
 use craft\base\AssetPreviewHandler;
-use craft\base\Volume;
-use craft\helpers\Html;
 use yii\base\NotSupportedException;
 
 /**
- * Provides functionality to preview PDFs
+ * Provides functionality to preview videos
  *
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
- * @since 3.4.0
+ * @since 3.4.3
  */
-class Pdf extends AssetPreviewHandler
+class Video extends AssetPreviewHandler
 {
     /**
      * @inheritdoc
@@ -32,10 +30,9 @@ class Pdf extends AssetPreviewHandler
             throw new NotSupportedException('Preview not supported.');
         }
 
-        return Html::tag('iframe', '', [
-            'width' => '100%',
-            'height' => '100%',
-            'src' => $url,
+        return Craft::$app->getView()->renderTemplate('assets/_previews/video', [
+            'asset' => $this->asset,
+            'url' => $url,
         ]);
     }
 }

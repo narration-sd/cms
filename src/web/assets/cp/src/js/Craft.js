@@ -500,7 +500,7 @@ $.extend(Craft,
                 'X-Registered-Js-Files': Object.keys(Craft.registeredJsFiles).join(',')
             };
 
-            if (Craft.csrfTokenValue && Craft.csrfTokenName) {
+            if (Craft.csrfTokenValue) {
                 headers['X-CSRF-Token'] = Craft.csrfTokenValue;
             }
 
@@ -610,6 +610,55 @@ $.extend(Craft,
         },
 
         /**
+         * Requests a URL and downloads the response.
+         *
+         * @param {string} method the request method to use
+         * @param {string} url the URL
+         * @param {string|Object} [body] the request body, if method = POST
+         * @return {Promise}
+         */
+        downloadFromUrl: function(method, url, body) {
+            return new Promise((resolve, reject) => {
+                // h/t https://nehalist.io/downloading-files-from-post-requests/
+                let request = new XMLHttpRequest();
+                request.open(method, url, true);
+                if (typeof body === 'object') {
+                    request.setRequestHeader('Content-Type', 'application/json; charset=UTF-8');
+                    body = JSON.stringify(body);
+                } else {
+                    request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+                }
+                request.responseType = 'blob';
+
+                request.onload = function() {
+                    // Only handle status code 200
+                    if (request.status === 200) {
+                        // Try to find out the filename from the content disposition `filename` value
+                        let disposition = request.getResponseHeader('content-disposition');
+                        let matches = /"([^"]*)"/.exec(disposition);
+                        let filename = (matches != null && matches[1] ? matches[1] : 'Download');
+
+                        // Encode the download into an anchor href
+                        let contentType = request.getResponseHeader('content-type');
+                        let blob = new Blob([request.response], {type: contentType});
+                        let link = document.createElement('a');
+                        link.href = window.URL.createObjectURL(blob);
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+
+                        resolve();
+                    } else {
+                        reject();
+                    }
+                }.bind(this);
+
+                request.send(body);
+            });
+        },
+
+        /**
          * Converts a comma-delimited string into an array.
          *
          * @param {string} str
@@ -645,8 +694,8 @@ $.extend(Craft,
             });
 
             // Group all of the old & new params by namespace
-            var groupedOldParams = this._groupParamsByDeltaNames(oldData.split('&'), deltaNames, false);
-            var groupedNewParams = this._groupParamsByDeltaNames(newData.split('&'), deltaNames, true);
+            var groupedOldParams = this._groupParamsByDeltaNames(oldData.split('&'), deltaNames, false, true);
+            var groupedNewParams = this._groupParamsByDeltaNames(newData.split('&'), deltaNames, true, false);
 
             // Figure out which of the new params should actually be posted
             var params = groupedNewParams.__root__;
@@ -667,7 +716,7 @@ $.extend(Craft,
             return params.join('&');
         },
 
-        _groupParamsByDeltaNames: function(params, deltaNames, withRoot) {
+        _groupParamsByDeltaNames: function(params, deltaNames, withRoot, useInitialValue) {
             var grouped = {};
 
             if (withRoot) {
@@ -687,7 +736,15 @@ $.extend(Craft,
                         if (typeof grouped[deltaNames[n]] === 'undefined') {
                             grouped[deltaNames[n]] = [];
                         }
-                        grouped[deltaNames[n]].push(params[p]);
+                        if (
+                            useInitialValue &&
+                            paramName === deltaNames[n] + '=' &&
+                            typeof Craft.initialDeltaValues[deltaNames[n]] !== 'undefined'
+                        ) {
+                            grouped[deltaNames[n]].push(encodeURIComponent(deltaNames[n]) + '=' + $.param(Craft.initialDeltaValues[deltaNames[n]]));
+                        } else {
+                            grouped[deltaNames[n]].push(params[p]);
+                        }
                         continue paramLoop;
                     }
                 }

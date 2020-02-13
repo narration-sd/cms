@@ -1,4 +1,4 @@
-/*!   - 2020-01-31 */
+/*!   - 2020-02-11 */
 (function($){
 
 /** global: Craft */
@@ -503,7 +503,7 @@ $.extend(Craft,
                 'X-Registered-Js-Files': Object.keys(Craft.registeredJsFiles).join(',')
             };
 
-            if (Craft.csrfTokenValue && Craft.csrfTokenName) {
+            if (Craft.csrfTokenValue) {
                 headers['X-CSRF-Token'] = Craft.csrfTokenValue;
             }
 
@@ -613,6 +613,55 @@ $.extend(Craft,
         },
 
         /**
+         * Requests a URL and downloads the response.
+         *
+         * @param {string} method the request method to use
+         * @param {string} url the URL
+         * @param {string|Object} [body] the request body, if method = POST
+         * @return {Promise}
+         */
+        downloadFromUrl: function(method, url, body) {
+            return new Promise((resolve, reject) => {
+                // h/t https://nehalist.io/downloading-files-from-post-requests/
+                let request = new XMLHttpRequest();
+                request.open(method, url, true);
+                if (typeof body === 'object') {
+                    request.setRequestHeader('Content-Type', 'application/json; charset=UTF-8');
+                    body = JSON.stringify(body);
+                } else {
+                    request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+                }
+                request.responseType = 'blob';
+
+                request.onload = function() {
+                    // Only handle status code 200
+                    if (request.status === 200) {
+                        // Try to find out the filename from the content disposition `filename` value
+                        let disposition = request.getResponseHeader('content-disposition');
+                        let matches = /"([^"]*)"/.exec(disposition);
+                        let filename = (matches != null && matches[1] ? matches[1] : 'Download');
+
+                        // Encode the download into an anchor href
+                        let contentType = request.getResponseHeader('content-type');
+                        let blob = new Blob([request.response], {type: contentType});
+                        let link = document.createElement('a');
+                        link.href = window.URL.createObjectURL(blob);
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+
+                        resolve();
+                    } else {
+                        reject();
+                    }
+                }.bind(this);
+
+                request.send(body);
+            });
+        },
+
+        /**
          * Converts a comma-delimited string into an array.
          *
          * @param {string} str
@@ -648,8 +697,8 @@ $.extend(Craft,
             });
 
             // Group all of the old & new params by namespace
-            var groupedOldParams = this._groupParamsByDeltaNames(oldData.split('&'), deltaNames, false);
-            var groupedNewParams = this._groupParamsByDeltaNames(newData.split('&'), deltaNames, true);
+            var groupedOldParams = this._groupParamsByDeltaNames(oldData.split('&'), deltaNames, false, true);
+            var groupedNewParams = this._groupParamsByDeltaNames(newData.split('&'), deltaNames, true, false);
 
             // Figure out which of the new params should actually be posted
             var params = groupedNewParams.__root__;
@@ -670,7 +719,7 @@ $.extend(Craft,
             return params.join('&');
         },
 
-        _groupParamsByDeltaNames: function(params, deltaNames, withRoot) {
+        _groupParamsByDeltaNames: function(params, deltaNames, withRoot, useInitialValue) {
             var grouped = {};
 
             if (withRoot) {
@@ -690,7 +739,15 @@ $.extend(Craft,
                         if (typeof grouped[deltaNames[n]] === 'undefined') {
                             grouped[deltaNames[n]] = [];
                         }
-                        grouped[deltaNames[n]].push(params[p]);
+                        if (
+                            useInitialValue &&
+                            paramName === deltaNames[n] + '=' &&
+                            typeof Craft.initialDeltaValues[deltaNames[n]] !== 'undefined'
+                        ) {
+                            grouped[deltaNames[n]].push(encodeURIComponent(deltaNames[n]) + '=' + $.param(Craft.initialDeltaValues[deltaNames[n]]));
+                        } else {
+                            grouped[deltaNames[n]].push(params[p]);
+                        }
                         continue paramLoop;
                     }
                 }
@@ -2216,12 +2273,12 @@ Craft.BaseElementIndex = Garnish.Base.extend(
                 this.siteMenu.on('optionselect', $.proxy(this, '_handleSiteChange'));
 
                 if (this.siteId) {
-                    // Do we have a different site stored in localStorage?
-                    var storedSiteId = Craft.getLocalStorage('BaseElementIndex.siteId');
+                    // Should we be using a different default site?
+                    var defaultSiteId = this.settings.defaultSiteId || Craft.getLocalStorage('BaseElementIndex.siteId');
 
-                    if (storedSiteId && storedSiteId != this.siteId) {
+                    if (defaultSiteId && defaultSiteId != this.siteId) {
                         // Is that one available here?
-                        var $storedSiteOption = this.siteMenu.$options.filter('[data-site-id="' + storedSiteId + '"]:first');
+                        var $storedSiteOption = this.siteMenu.$options.filter('[data-site-id="' + defaultSiteId + '"]:first');
 
                         if ($storedSiteOption.length) {
                             // Todo: switch this to siteMenu.selectOption($storedSiteOption) once Menu is updated to support that
@@ -2646,6 +2703,11 @@ Craft.BaseElementIndex = Garnish.Base.extend(
                 }
                 params.collapsedElementIds = this.instanceState.collapsedElementIds;
             }
+
+            // Give plugins a chance to hook in here
+            this.trigger('registerViewParams', {
+                params: params,
+            });
 
             return params;
         },
@@ -3864,19 +3926,20 @@ Craft.BaseElementIndex = Garnish.Base.extend(
                     }
                 }
 
-                Craft.postActionRequest('element-indexes/create-export-token', params, $.proxy(function(response, textStatus) {
-                    submitting = false;
-                    $spinner.addClass('hidden');
+                if (Craft.csrfTokenValue) {
+                    params[Craft.csrfTokenName] = Craft.csrfTokenValue;
+                }
 
-                    if (textStatus === 'success') {
-                        var params = {};
-                        params[Craft.tokenParam] = response.token;
-                        var url = Craft.getCpUrl('', params);
-                        document.location.href = url;
-                    } else {
+                Craft.downloadFromUrl('POST', Craft.getActionUrl('element-indexes/export'), params)
+                    .then(function() {
+                        submitting = false;
+                        $spinner.addClass('hidden');
+                    })
+                    .catch(function() {
+                        submitting = false;
+                        $spinner.addClass('hidden');
                         Craft.cp.displayError(Craft.t('app', 'A server error occurred.'));
-                    }
-                }, this));
+                    });
             });
         },
 
@@ -3914,6 +3977,7 @@ Craft.BaseElementIndex = Garnish.Base.extend(
             refreshSourcesAction: 'element-indexes/get-source-tree-html',
             updateElementsAction: 'element-indexes/get-elements',
             submitActionsAction: 'element-indexes/perform-action',
+            defaultSiteId: null,
             defaultSource: null,
 
             onAfterInit: $.noop,
@@ -4966,6 +5030,7 @@ Craft.BaseElementSelectorModal = Garnish.Modal.extend(
                         buttonContainer: this.$secondaryButtons,
                         onSelectionChange: $.proxy(this, 'onSelectionChange'),
                         hideSidebar: this.settings.hideSidebar,
+                        defaultSiteId: this.settings.defaultSiteId,
                         defaultSource: this.settings.defaultSource
                     });
 
@@ -4995,6 +5060,7 @@ Craft.BaseElementSelectorModal = Garnish.Modal.extend(
             onCancel: $.noop,
             onSelect: $.noop,
             hideSidebar: false,
+            defaultSiteId: null,
             defaultSource: null
         }
     });
@@ -14681,15 +14747,14 @@ Craft.EditableTable = Garnish.Base.extend(
                         'html': value
                     });
                 } else {
-                    var name = baseName + '[' + rowId + '][' + colId + ']',
-                        textual = Craft.inArray(col.type, Craft.EditableTable.textualColTypes);
+                    var name = baseName + '[' + rowId + '][' + colId + ']';
 
                     $cell = $('<td/>', {
-                        'class': col['class'],
+                        'class': `${col['class'] || ''} ${col['type']}-cell`,
                         'width': col.width
                     });
 
-                    if (textual) {
+                    if (Craft.inArray(col.type, Craft.EditableTable.textualColTypes)) {
                         $cell.addClass('textual');
                     }
 
@@ -14699,11 +14764,14 @@ Craft.EditableTable = Garnish.Base.extend(
 
                     switch (col.type) {
                         case 'checkbox':
-                            Craft.ui.createCheckbox({
-                                name: name,
-                                value: col.value || '1',
-                                checked: !!value
-                            }).appendTo($cell);
+                            $('<div class="checkbox-wrapper"/>')
+                                .append(Craft.ui.createCheckbox({
+                                        name: name,
+                                        value: col.value || '1',
+                                        checked: !!value
+                                    })
+                                )
+                                .appendTo($cell);
                             break;
 
                         case 'color':
@@ -14845,7 +14913,7 @@ Craft.EditableTable.Row = Garnish.Base.extend(
                 td = this.tds[colId] = this.$tds[i];
 
                 if (Craft.inArray(col.type, Craft.EditableTable.textualColTypes)) {
-                    $textarea = $('textarea, input.text', td);
+                    $textarea = $('textarea', td);
                     this.$textareas = this.$textareas.add($textarea);
 
                     this.addListener($textarea, 'focus', 'onTextareaFocus');
@@ -14876,6 +14944,14 @@ Craft.EditableTable.Row = Garnish.Base.extend(
                             this.applyToggleCheckbox(ev.data.colId);
                         });
                     }
+                }
+
+                if (!$(td).hasClass('disabled')) {
+                    this.addListener(td, 'click', {td: td}, function(ev) {
+                        if (ev.target === ev.data.td) {
+                            $(ev.data.td).find('textarea,input,select,.lightswitch').focus();
+                        }
+                    });
                 }
 
                 i++;
@@ -14912,6 +14988,14 @@ Craft.EditableTable.Row = Garnish.Base.extend(
 
             var $deleteBtn = this.$tr.children().last().find('.delete');
             this.addListener($deleteBtn, 'click', 'deleteRow');
+
+            var $inputs = this.$tr.find('input,textarea,select,.lightswitch');
+            this.addListener($inputs, 'focus', function(ev) {
+                $(ev.currentTarget).closest('td:not(.disabled)').addClass('focus');
+            });
+            this.addListener($inputs, 'blur', function(ev) {
+                $(ev.currentTarget).closest('td').removeClass('focus');
+            });
         },
 
         onTextareaFocus: function(ev) {
@@ -14948,7 +15032,7 @@ Craft.EditableTable.Row = Garnish.Base.extend(
                 if (neg = colId[0] === '!') {
                     colId = colId.substr(1);
                 }
-                if ((checked && !neg) || (!checked && neg))  {
+                if ((checked && !neg) || (!checked && neg)) {
                     $(this.tds[colId])
                         .removeClass('disabled')
                         .find('textarea, input').prop('disabled', false);
@@ -14998,12 +15082,10 @@ Craft.EditableTable.Row = Garnish.Base.extend(
 
                 if (match !== null) {
                     safeValue = match[1];
-                }
-                else {
+                } else {
                     safeValue = '';
                 }
-            }
-            else {
+            } else {
                 // Just strip any newlines
                 safeValue = ev.currentTarget.value.replace(/[\r\n]/g, '');
             }
